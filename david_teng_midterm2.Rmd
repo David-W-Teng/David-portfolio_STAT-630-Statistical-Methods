@@ -1,0 +1,261 @@
+---
+title: "STAT 630 Midterm 2"
+author: "David Teng"
+date: "Thursday, Nov 7th"
+problems: ""
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, error = TRUE)
+```
+
+```{r}
+library(openintro)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(gtsummary)
+```
+
+```{r}
+diabetes <- read.csv("data/diabetes.csv")
+```
+
+### 1. 
+
+Focusing on a specific subpopulation, like Pima Indian women aged 21 and older, restricts the ability to apply the findings to a wider population. The outcomes may not be relevant to other age ranges and genders, limiting the generalizability of the study's conclusions on diabetes risk.
+
+### 2. 
+
+Women who are more focused on their health or diabetes may be more inclined to join the study, leading to selection bias. This could cause an overrepresentation of individuals already worried about their well-being, potentially distorting the results and limiting their generalizability of the results.
+
+### 3.
+
+```{r}
+summary(diabetes)
+```
+Unusual values, such as extremely high or low glucose, blood pressure, or insulin levels, may indicate data entry errors or outliers. These values can skew summary statistics, leading to misleading conclusions. Finding them is important to ensure accurate analysis, as they might impact variance or introduce bias in estimates of diabetes risk factors.
+
+### 4.
+
+I will remove the unusual values, as they likely represent data entry errors or extreme outliers that could distort analysis results. Removing these values helps to maintain trustful means and standard deviations, reducing the risk of skewed conclusions. This approach ensures a more accurate estimation of diabetes risk factors.
+
+
+
+```{r}
+knitr::kable(apply(diabetes,2, function(x) sum(is.na(x))))
+```
+
+```{r}
+# Remove rows with missing values
+dia_clean <- na.omit(diabetes)
+```
+
+```{r}
+# Convert categorical variables to factors
+diabetes <- diabetes %>%
+  mutate(
+    pregnancies = as.factor(pregnancies),
+    outcome = as.factor(outcome)
+  )
+
+# Handle unusual values 
+diabetes_cleaned <- diabetes %>%
+  mutate(
+    glucose = ifelse(glucose == 0, NA, glucose),
+    blood_pressure = ifelse(blood_pressure == 0, NA, blood_pressure),
+    insulin = ifelse(insulin == 0, NA, insulin),
+    bmi = ifelse(bmi == 0, NA, bmi)
+  )
+
+```
+
+
+### 5.
+
+```{r}
+diabetes %>%
+  select(pregnancies, glucose, blood_pressure, insulin, bmi, age, outcome) %>%
+  mutate(outcome = ifelse(outcome == "0", "No Diabetes", "Diabetes")) %>%
+  tbl_summary(
+    by = outcome,
+    digits = list(all_continuous() ~ c(2, 2)),
+    statistic = all_continuous() ~ "{mean} ({sd})"
+  ) %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_caption(caption = "Descriptive Statistics of Diabetes Dataset Stratified by Outcome")
+
+```
+
+
+### 6. 
+
+In the table, those diagnosed with diabetes tend to have higher mean glucose levels, BMI, and insulin values compared to those without diabetes.These factors may have association with increased diabetes risk. Additionally, women with diabetes appear to have a higher frequency of pregnancies. These patterns indicate potential relationships between these variables and diabetes prevalence.
+
+### 7.
+
+```{r}
+# Create a plot to visualize the relationship between BMI and diabetes status
+ggplot(diabetes, aes(x = outcome, y = bmi, fill = outcome)) +
+  geom_boxplot() +
+  labs(
+    title = "Relationship Between BMI and Diabetes Status",
+    x = "Diabetes Status (Outcome)",
+    y = "Body Mass Index (BMI)"
+  ) +
+  scale_fill_manual(values = c("lightblue", "lightcoral"), labels = c("Non-diabetic", "Diabetic")) +
+  theme_minimal()
+```
+
+
+### 8.
+
+The boxplot shows BMI distribution for non-diabetic (outcome = 0) and diabetic (outcome = 1) groups. The median BMI is higher in diabetics, with a slightly larger standard deviation, indicating more variability. Overall, higher BMI may be associated with diabetes.
+
+### 9.
+
+```{r}
+# Create new variable for age categories
+diabetes <- diabetes %>% 
+  mutate(age = ifelse(age < 30, "Under 30", "30 and older"))
+```
+
+```{r}
+# 1: hypotheses
+# H0: p1 - p2 = 0 (Proportion of diabetes in women under 30 is equal to those 30 and older)
+# Ha: p1 - p2 ≠ 0 (Proportion of diabetes in women under 30 is different from those 30 and older)
+
+# Step 2: Choose significance level
+alpha <- 0.05
+
+# Step 3: Calculate the test statistic
+prop_test <- prop.test(
+  x = table(diabetes$outcome, diabetes$age)[2, ], # Number of successes (diabetic cases)
+  n = table(diabetes$age), # Number of trials per group
+  alternative = "two.sided"
+)
+
+prop_test
+```
+
+```{r}
+decision <- ifelse(prop_test$p.value < alpha, "Reject H0", "Fail to reject H0")
+print(decision)
+```
+
+Decision: Reject $H_0$
+Conclusion: We have enough evidence that proportion of diabetes in women under 30 is significantly different from those 30 and older.
+
+### 10. 
+
+```{r}
+# Calculate summary statistics for BMI by diabetes outcome
+bmi_summary <- diabetes %>%
+  group_by(outcome) %>%
+  summarise(
+    mean_bmi = mean(bmi, na.rm = TRUE),
+    sd_bmi = sd(bmi, na.rm = TRUE),
+    n = n()
+  )
+
+bmi_summary
+```
+
+```{r}
+# Step 1: hypotheses
+# H0: μ1 - μ2 = 0 (The average BMI for those with diabetes is equal to the average BMI for those without)
+# Ha: μ1 - μ2 ≠ 0 (The average BMI for those with diabetes is different from those without)
+
+# Step 2: Check necessary conditions
+# Assume normality due to large sample size (Central Limit Theorem applies)
+
+# Step 3: Calculate confidence interval for the difference in means
+t_test_result <- t.test(
+  bmi ~ outcome,
+  data = diabetes,
+  conf.level = 0.99,
+  var.equal = FALSE
+)
+t_test_result
+
+# Calculate 99% confidence interval
+ci <- t_test_result$conf.int
+ci
+
+```
+
+```{r}
+# Step 4: Conclusion
+# Interpretation
+if (ci[1] > 0 | ci[2] < 0) {
+  decision <- "Reject H0"
+} else {
+  decision <- "Fail to reject H0"
+}
+
+decision
+```
+
+Decision: Reject $H_0$
+Conclusion: There is a significant difference in the average BMI between those with diabetes and those without diabetes.
+
+
+### 11. 
+
+```{r}
+# Step 1: hypotheses
+# H0: There is no association between the number of pregnancies and diabetes status (independence)
+# Ha: There is an association between the number of pregnancies and diabetes status (dependence)
+
+# Step 2: Choose significance level
+alpha <- 0.05
+
+# Step 3: Calculate the test statistic
+
+chisq <- chisq.test(diabetes$pregnancies, diabetes$outcome)
+
+# Step 4: Draw conclusions based on p-value
+chisq
+```
+
+```{r}
+# Step 5: Make decision
+decision <- ifelse(chisq$p.value < alpha, "Reject H0", "Fail to reject H0")
+decision
+```
+
+
+Decision: Reject $H_0$
+Conclusion: There is an association between the number of pregnancies and diabetes status
+
+### 12.
+
+age:
+There is a significant difference in diabetes proportion between women under 30 and those aged 30 or older.
+
+bmi:
+There is a significant difference in the average BMI between individuals with diabetes and those without.
+
+pregnancies:
+There is an association between the number of pregnancies and diabetes status.
+
+
+### 13.
+
+age
+Introduce targeted intervention strategies for women over 30, focusing on regular screenings and lifestyle interventions to lower diabetes risk within this age group.
+
+bmi
+Implement community health initiatives to promote healthy weight and BMI through exercise programs, nutritional education, and support groups aimed at diabetes prevention.
+
+pregnancies
+Develop educational programs and prenatal care strategies specifically for pregnant women to address diabetes risks, including monitoring glucose levels during and after pregnancy and providing gestational diabetes care.
+
+14.
+No.
+
+15.
+E - Excellent
+
